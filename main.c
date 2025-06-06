@@ -40,6 +40,8 @@ volatile uint8_t enteredPassword[4];
 volatile uint8_t passwordIndex = 0;
 volatile uint8_t incorectAttempts = 0;
 
+volatile uint8_t isOptionSelected = 0;
+
 enum State{
 	STANDBY,
 	ALARM,
@@ -171,10 +173,43 @@ void PORTA_IRQHandler(void)
 	NVIC_ClearPendingIRQ(PORTA_IRQn);
 }
 
-void ArmAlarm(void)
-{
 
+void Speaker_Init()
+{
+	wynik = (float)50*volt_coeff;
+	df=DIV_CORE/MASKA_10BIT;	// Rozdzielczość generatora delta fs
+	nyquist=DIV_CORE/(3*df);
+	DAC_Init();		// Inicjalizacja prztwornika C/A
+	for(faza=0;faza<1024;faza++)
+		Sinus[faza]=(sin((double)faza*0.0061359231515)*2047.0); // Ładowanie 1024-ech sztuk, 12-bitowych próbek funkcji sisnus do tablicy
+	faza=0;		// Ustawienie wartości początkowych generatora cyfrowej fazy i modulatora fazy
+	mod=64;
+	freq=mod*df;
+	NVIC_SetPriority(SysTick_IRQn, 0);
 }
+
+uint8_t CheckPassword(uint8_t *password)
+{
+	return (memcmp(password, correctPassword, 4) == 0) ? 1 : 0;
+}
+
+void ClearPassword()
+{
+	for (uint8_t i = 0; i < sizeof(enteredPassword)/sizeof(enteredPassword[0]); i++)
+	{
+		enteredPassword[i] = 0; 
+	}
+	passwordIndex = 0;
+}
+
+void ChangePassword(uint8_t *password)
+{
+	for (uint8_t i = 0; i < sizeof(correctPassword)/sizeof(correctPassword[0]); i++)
+	{
+		correctPassword[i] = password[i]; 
+	}
+}
+
 
 void StartAlarm(void)
 {
@@ -199,6 +234,16 @@ void StopAlarm(void)
 	
 }
 
+void ArmAlarm(void)
+{
+	LCD1602_ClearAll();
+	LCD1602_Print("Enter password:");
+	LCD1602_SetCursor(0,1);
+	ClearPassword();
+
+	currentState = STANDBY;
+}
+
 void CheckAccel()
 {
 	I2C_ReadReg(0x1d, 0x0, &status);
@@ -221,19 +266,117 @@ void CheckAccel()
 }
 
 
-void Speaker_Init()
+
+
+void MainMenu(void)
 {
-	wynik = (float)50*volt_coeff;
-	df=DIV_CORE/MASKA_10BIT;	// Rozdzielczość generatora delta fs
-	nyquist=DIV_CORE/(3*df);
-	DAC_Init();		// Inicjalizacja prztwornika C/A
-	for(faza=0;faza<1024;faza++)
-		Sinus[faza]=(sin((double)faza*0.0061359231515)*2047.0); // Ładowanie 1024-ech sztuk, 12-bitowych próbek funkcji sisnus do tablicy
-	faza=0;		// Ustawienie wartości początkowych generatora cyfrowej fazy i modulatora fazy
-	mod=64;
-	freq=mod*df;
-	NVIC_SetPriority(SysTick_IRQn, 0);
+	currentMenu = MENU_MAIN;
+
+	LCD1602_ClearAll();
+	LCD1602_Print("   Admin Mode");
+	LCD1602_SetCursor(0,1);
+	LCD1602_Print("1 ^ 2 v 3 < 4 >");
 }
+
+void VolumeMenu(void)
+{
+	currentMenu = MENU_VOLUME;
+
+	LCD1602_ClearAll();
+	LCD1602_Print("    Volume");
+	LCD1602_SetCursor(0,1);
+	LCD1602_Print("1 ^ 2 v 3 < 4 >");
+}
+
+void SensitivityMenu(void)
+{
+	currentMenu = MENU_SENSITIVITY;
+
+	LCD1602_ClearAll();
+	LCD1602_Print("  Sensitivity");
+	LCD1602_SetCursor(0,1);
+	LCD1602_Print("1 ^ 2 v 3 < 4 >");
+}
+
+void PasswordMenu(void)
+{
+	currentMenu = MENU_PASSWORD;
+
+	LCD1602_ClearAll();
+	LCD1602_Print("Change Password");
+	LCD1602_SetCursor(0,1);
+	LCD1602_Print("1 ^ 2 v 3 < 4 >");
+}
+
+
+void Back(void)
+{
+	if (isOptionSelected)
+	{
+		isOptionSelected = 0;
+	}
+	
+	if (currentMenu != 0)
+	{
+		MainMenu();
+	}
+
+}
+
+
+void Forward(void)
+{
+	if (currentMenu == 0)
+	{
+		return;
+	}
+
+	isOptionSelected = 1;
+}
+
+void Up(void)
+{
+	switch (currentMenu)
+	{
+	case MENU_MAIN:
+		SensitivityMenu();
+		break;
+	case MENU_PASSWORD:
+		MainMenu();
+		break;
+	case MENU_VOLUME:
+		PasswordMenu();
+		break;
+	case MENU_SENSITIVITY:
+		VolumeMenu();
+		break;
+	default:
+		break;
+	}
+}
+
+void Down(void)
+{
+	switch (currentMenu)
+	{
+		case MENU_MAIN:
+			PasswordMenu();
+			break;
+		case MENU_PASSWORD:
+			VolumeMenu();
+			break;
+		case MENU_VOLUME:
+			SensitivityMenu();
+			break;
+		case MENU_SENSITIVITY:
+			MainMenu();
+			break;
+		default:
+			break;
+	}
+}
+
+
 
 void EnterAdminMode()
 {
@@ -241,32 +384,9 @@ void EnterAdminMode()
 	currentState = ADMIN;
 	StopAlarm();
 	MainMenu();
-
-	
-	
 }
 
-uint8_t CheckPassword(uint8_t *password)
-{
-	return (memcmp(password, correctPassword, 4) == 0) ? 1 : 0;
-}
 
-void ClearPassword()
-{
-	for (uint8_t i = 0; i < sizeof(enteredPassword)/sizeof(enteredPassword[0]); i++)
-	{
-		enteredPassword[i] = 0; 
-	}
-	passwordIndex = 0;
-}
-
-void ChangePassword(uint8_t *password)
-{
-	for (uint8_t i = 0; i < sizeof(correctPassword)/sizeof(correctPassword[0]); i++)
-	{
-		correctPassword[i] = password[i]; 
-	}
-}
 
 
 void CheckButtons(void)
@@ -320,62 +440,28 @@ void CheckButtons(void)
 		if (BtnFlags[0])
 		{
 			BtnFlags[0] = 0;
-			Back();
+			Up(); 
 		}
 		if (BtnFlags[1])
 		{
 			BtnFlags[1] = 0;
-
+			Down();
 			
 		}
 		if (BtnFlags[2])
 		{
 			BtnFlags[2] = 0;
-
+			Back();
 		}
 		if (BtnFlags[3])
 		{
 			BtnFlags[3] = 0;
-
+			Forward();
 		}
 		return;
 	}
 }
 
-void MainMenu(void)
-{
-	currentMenu = MENU_MAIN;
-
-	LCD1602_ClearAll();
-	LCD1602_Print("   Admin Mode");
-	LCD1602_SetCursor(0,1);
-	LCD1602_Print("1 ^ 2 v 3 < 4 >");
-}
-
-
-void Back(void)
-{
-	if (currentMenu != 0)
-	{
-		currentMenu = MENU_MAIN;
-		MainMenu();
-	}
-}
-
-void Forward(void)
-{
-
-}
-
-void Up(void)
-{
-
-}
-
-void Down(void)
-{
-
-}
 
 
 
@@ -434,12 +520,7 @@ int main (void)
 	StopAlarm();
 	
 
-	LCD1602_ClearAll();
-	LCD1602_Print("Enter password:");
-	LCD1602_SetCursor(0,1);
-	ClearPassword();
-
-	currentState = STANDBY;
+	ArmAlarm();	
 
 
 	while(1)		
