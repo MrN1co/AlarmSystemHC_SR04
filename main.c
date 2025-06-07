@@ -1,3 +1,7 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
 
 #include "MKL05Z4.h"
 #include "frdm_bsp.h"
@@ -5,10 +9,9 @@
 #include "leds.h"
 #include "DAC.h"
 #include "klaw.h"
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <math.h>
+#include "hc_sr04.h"
+
+
 
 #define	ZYXDR_Mask	1<<3	// Maska bitu ZYXDR w rejestrze STATUS
 #define DIV_CORE	8192	// Przerwanie co 0.120ms - fclk=8192Hz df=8Hz
@@ -23,10 +26,14 @@ volatile uint32_t tickCounter=0;
 volatile uint8_t timerCall=0;		
 volatile uint8_t isAlarmOn=0;	
 
+volatile uint32_t distance = 0; 
+volatile uint32_t distanceSensitivity = 20; // Minimalna odległość do wywołania alarmu w cm
+
 volatile uint8_t BtnFlags[4] = {0, 0, 0, 0}; // Tablica do przechowywania stanu przycisków
 
 volatile int16_t temp;
-volatile uint16_t slider = 50;
+volatile uint16_t volume = 50;
+volatile uint16_t tsiValue = 0;
 volatile uint16_t dac;
 volatile int16_t Sinus[1024];
 volatile uint16_t faza, mod, freq, df;
@@ -49,7 +56,7 @@ enum State{
 };
 volatile enum State currentState = STANDBY;
 
-enum MenuScreen{
+enum MenuScreen{ // TODO: Try typedef
 	MENU_MAIN,
 	MENU_PASSWORD,
 	MENU_VOLUME,
@@ -57,21 +64,20 @@ enum MenuScreen{
 };
 volatile enum MenuScreen currentMenu = MENU_MAIN;
 
+volatile void (*PrintMenu[4])(void) = {
+	MainMenu,
+	PasswordMenu,
+	VolumeMenu,
+	SensitivityMenu
+};
 
 
 
 
-void Debug(void)
+
+void SysTick_Handler(void)
 {
-	LCD1602_ClearAll();
-	LCD1602_Print("Debug");
-}
-
-
-
-void SysTick_Handler(void)	
-{ 
-	dac=(Sinus[faza]/100)*slider+0x0800;					// Przebieg sinusoidalny
+	dac=(Sinus[faza]/100)*volume+0x0800;					// Przebieg sinusoidalny
 	DAC_Load_Trig(dac);
 	faza+=mod;		// faza - generator cyfrowej fazy
 	faza&=MASKA_10BIT;	// rejestr sterujący przetwornikiem, liczący modulo 1024 (N=10 bitów)
@@ -111,23 +117,10 @@ void PORTB_IRQHandler(void)
 void PORTA_IRQHandler(void)	
 {
 	uint32_t buf;
-	buf=PORTA->ISFR & (/*S1_MASK | */S2_MASK | S3_MASK | S4_MASK);
+	buf=PORTA->ISFR & (S2_MASK | S3_MASK | S4_MASK);
 
 	switch(buf)
 	{
-		// case S1_MASK:	DELAY(100)
-		// 							if(!(PTA->PDIR&S1_MASK))		// Minimalizacja drgań zestyków
-		// 							{
-		// 								DELAY(100)
-		// 								if(!(PTA->PDIR&S1_MASK))	// Minimalizacja drgań zestyków (c.d.)
-		// 								{
-		// 									if(!BtnFlags[0])
-		// 									{
-		// 										BtnFlags[0]=1;
-		// 									}
-		// 								}
-		// 							}
-		// 							break;
 		case S2_MASK:	DELAY(100)
 									if(!(PTA->PDIR&S2_MASK))		// Minimalizacja drgań zestyków
 									{
@@ -169,7 +162,7 @@ void PORTA_IRQHandler(void)
 									break;
 		default:			break;
 	}	
-	PORTA->ISFR |=  S1_MASK | S2_MASK | S3_MASK | S4_MASK;	// Kasowanie wszystkich bitów ISF
+	PORTA->ISFR |=  S2_MASK | S3_MASK | S4_MASK;	// Kasowanie wszystkich bitów ISF
 	NVIC_ClearPendingIRQ(PORTA_IRQn);
 }
 
@@ -265,6 +258,19 @@ void CheckAccel()
 	}
 }
 
+void CheckDistance()
+{
+	uint32_t newDistance = HC_SR04_GetDistance();
+	if (abs(newDistance - distance) < distanceSensitivity) 
+	{
+		if (currentState == STANDBY)
+		{
+			StartAlarm();
+		}
+	}
+	distance = newDistance; 
+}
+
 
 
 
@@ -314,6 +320,7 @@ void Back(void)
 	if (isOptionSelected)
 	{
 		isOptionSelected = 0;
+		PrintMenu[currentMenu]();
 	}
 	
 	if (currentMenu != 0)
@@ -332,6 +339,22 @@ void Forward(void)
 	}
 
 	isOptionSelected = 1;
+	switch (currentMenu)
+	{
+		case MENU_PASSWORD:
+			LCD1602_ClearAll();
+			LCD1602_Print("Enter new pass:");
+			LCD1602_SetCursor(0,1);
+			ClearPassword();
+			break;
+		case MENU_VOLUME:
+			LCD1602_ClearAll();
+			LCD1602_Print("Set new volume: ");
+			LCD1602_SetCursor(0,1);
+			LCD1602_Print(tsiValue);
+			LCD1602_PrintNum(volume);
+			break;
+	}
 }
 
 void Up(void)
@@ -391,7 +414,7 @@ void EnterAdminMode()
 
 void CheckButtons(void)
 {
-	if (currentState != 2) //If not in admin mode
+	if (currentState != 2 || (isOptionSelected && currentMenu == MENU_PASSWORD)) //If not in admin mode
 	{
 		for (uint8_t i = 0; i < sizeof(BtnFlags)/sizeof(BtnFlags[0]); i++)
 		{
@@ -404,11 +427,24 @@ void CheckButtons(void)
 				passwordIndex++;
 
 				LCD1602_SetCursor(passwordIndex+5, 1);
+				if (currentState == 2)
+				{
+					LCD1602_PrintNum(enteredPassword[passwordIndex-1]);
+				}
+				
 				LCD1602_Print("*");
 			}
 
 			if (passwordIndex >= 4) // If 4 digits entered
 			{
+				if (currentState == 2)
+				{
+					ChangePassword(enteredPassword);
+					LCD1602_ClearAll();
+					LCD1602_Print("Password changed!");
+					Back();
+				}
+				
 				if (CheckPassword(enteredPassword))
 				{
 					EnterAdminMode();
@@ -445,8 +481,7 @@ void CheckButtons(void)
 		if (BtnFlags[1])
 		{
 			BtnFlags[1] = 0;
-			Down();
-			
+			Down();	
 		}
 		if (BtnFlags[2])
 		{
@@ -528,6 +563,7 @@ int main (void)
 		if(currentState == 0)
 		{
 			CheckAccel();
+			CheckDistance();
 		}
 
 

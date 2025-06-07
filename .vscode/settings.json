@@ -3,7 +3,10 @@
         "leds.h": "c",
         "frdm_bsp.h": "c",
         "stdlib.h": "c",
-        "mkl05z4.h": "c"
+        "mkl05z4.h": "c",
+        "klaw.h": "c",
+        "stdio.h": "c",
+        "lcd1602.h": "c"
     },
     "C_Cpp.errorSquiggles": "enabled"
 }
