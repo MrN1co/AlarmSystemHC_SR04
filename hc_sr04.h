@@ -3,8 +3,8 @@
 
 
 #include "MKL05Z4.h"
-#define TRIG_PIN 5 // Pin do sygnału TRIG
-#define ECHO_PIN 6 // Pin do sygnału ECHO
+#define TRIG_PIN 7 // Pin do sygnału TRIG
+#define ECHO_PIN 11 // Pin do sygnału ECHO
 
 #define TRIG_MASK (1 << TRIG_PIN) // Maska dla TRIG
 #define ECHO_MASK (1 << ECHO_PIN) // Maska dla ECHO
@@ -29,6 +29,6 @@ void HC_SR04_Start(void);
  *
  * @return Distance in centimeters.
  */
-uint32_t HC_SR04_GetDistance(void);
+float HC_SR04_GetDistance(void);
 
 #endif

@@ -112,7 +112,7 @@ void LCD1602_PrintNum(int number) {
 	
 	size = itoa(number, str);
 	LCD1602_Print(str);
-	if (size < 5) LCD1602_Print("      ");   /* change if display bigger values*/
+	if (size < 5) LCD1602_Print(" ");   /* change if display bigger values*/
 }
 
 void LCD1602_Backlight(uint8_t state) {

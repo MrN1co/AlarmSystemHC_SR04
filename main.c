@@ -26,8 +26,8 @@ volatile uint32_t tickCounter=0;
 volatile uint8_t timerCall=0;		
 volatile uint8_t isAlarmOn=0;	
 
-volatile uint32_t distance = 0; 
-volatile uint32_t distanceSensitivity = 20; // Minimalna odległość do wywołania alarmu w cm
+volatile float distance = 0; 
+volatile uint32_t distanceSensitivity = 200; // Minimalna odległość do wywołania alarmu w cm
 
 volatile uint8_t BtnFlags[4] = {0, 0, 0, 0}; // Tablica do przechowywania stanu przycisków
 
@@ -48,6 +48,11 @@ volatile uint8_t passwordIndex = 0;
 volatile uint8_t incorectAttempts = 0;
 
 volatile uint8_t isOptionSelected = 0;
+volatile uint8_t armConfirmation = 0;
+
+void CheckDistance(void);
+
+
 
 enum State{
 	STANDBY,
@@ -64,12 +69,7 @@ enum MenuScreen{ // TODO: Try typedef
 };
 volatile enum MenuScreen currentMenu = MENU_MAIN;
 
-volatile void (*PrintMenu[4])(void) = {
-	MainMenu,
-	PasswordMenu,
-	VolumeMenu,
-	SensitivityMenu
-};
+
 
 
 
@@ -77,16 +77,25 @@ volatile void (*PrintMenu[4])(void) = {
 
 void SysTick_Handler(void)
 {
-	dac=(Sinus[faza]/100)*volume+0x0800;					// Przebieg sinusoidalny
-	DAC_Load_Trig(dac);
-	faza+=mod;		// faza - generator cyfrowej fazy
-	faza&=MASKA_10BIT;	// rejestr sterujący przetwornikiem, liczący modulo 1024 (N=10 bitów)
-
-	tickCounter+=1;	
-	if(tickCounter==3277)	// 0.120ms*3277=393ms
+	if (currentState == 1) {
+		dac=(Sinus[faza]/100)*volume+0x0800;					// Przebieg sinusoidalny
+		DAC_Load_Trig(dac);
+		faza+=mod;		// faza - generator cyfrowej fazy
+		faza&=MASKA_10BIT;	// rejestr sterujący przetwornikiem, liczący modulo 1024 (N=10 bitów)
+		tickCounter+=1;	
+		if(tickCounter==3277)	// 0.120ms*3277=393ms
+		{
+			tickCounter=0;
+			timerCall=1;
+		}
+	}
+	else 
 	{
-		tickCounter=0;
-		timerCall=1;
+		if (currentState == 0)
+		{
+			timerCall = 1;
+		}
+		
 	}
 }
 
@@ -209,7 +218,7 @@ void StartAlarm(void)
 	SysTick_Config(SystemCoreClock/DIV_CORE);
 	PTB->PTOR|=LED_R_MASK;
 
-
+	ClearPassword();
 	LCD1602_ClearAll();
 	LCD1602_Print("    ALARM!!!");
 	currentState = ALARM;
@@ -217,7 +226,8 @@ void StartAlarm(void)
 
 void StopAlarm(void)
 {
-	SysTick_Config(1);
+	SysTick_Config(SystemCoreClock/10);
+
 	PTB->PSOR|=LED_R_MASK;
 	PTB->PSOR|=LED_B_MASK;
 	if (currentState == 1)
@@ -260,8 +270,8 @@ void CheckAccel()
 
 void CheckDistance()
 {
-	uint32_t newDistance = HC_SR04_GetDistance();
-	if (abs(newDistance - distance) < distanceSensitivity) 
+	float newDistance = HC_SR04_GetDistance();
+	if (fabs(newDistance - distance) > distanceSensitivity) 
 	{
 		if (currentState == STANDBY)
 		{
@@ -314,13 +324,25 @@ void PasswordMenu(void)
 	LCD1602_Print("1 ^ 2 v 3 < 4 >");
 }
 
+void (*PrintMenu[4])(void) = {
+	&MainMenu,
+	&PasswordMenu,
+	&VolumeMenu,
+	&SensitivityMenu
+};
+
 
 void Back(void)
 {
 	if (isOptionSelected)
 	{
 		isOptionSelected = 0;
+		if (currentMenu == MENU_MAIN)
+		{
+			armConfirmation = 0;
+		}
 		PrintMenu[currentMenu]();
+		return;
 	}
 	
 	if (currentMenu != 0)
@@ -328,19 +350,32 @@ void Back(void)
 		MainMenu();
 	}
 
+	
+
 }
 
 
 void Forward(void)
 {
-	if (currentMenu == 0)
+	if (isOptionSelected && currentMenu == MENU_MAIN && armConfirmation)
 	{
+		armConfirmation = 0;
+		isOptionSelected = 0;
+		ArmAlarm();
 		return;
 	}
+	
 
 	isOptionSelected = 1;
 	switch (currentMenu)
 	{
+		case MENU_MAIN:
+			LCD1602_ClearAll();
+			LCD1602_Print(" Arm the alarm? ");
+			LCD1602_SetCursor(0,1);
+			LCD1602_Print(" 3 Cancel 4 Arm ");
+			armConfirmation = 1; 
+			break;
 		case MENU_PASSWORD:
 			LCD1602_ClearAll();
 			LCD1602_Print("Enter new pass:");
@@ -351,14 +386,31 @@ void Forward(void)
 			LCD1602_ClearAll();
 			LCD1602_Print("Set new volume: ");
 			LCD1602_SetCursor(0,1);
-			LCD1602_Print(tsiValue);
-			LCD1602_PrintNum(volume);
+			LCD1602_PrintNum(tsiValue);
+			break;
+		case MENU_SENSITIVITY:
+			LCD1602_ClearAll();
+			LCD1602_Print("Acc sens:");
+			LCD1602_SetCursor(0,1);
+			LCD1602_Print("2 Prox 3 < 4 >");
+			break;
+		default:
 			break;
 	}
 }
 
 void Up(void)
 {
+	if (isOptionSelected && currentMenu == 3)
+	{
+		//TODO: Handle sensitivity change
+	}
+	
+	if (isOptionSelected)
+	{
+		return;
+	}
+	
 	switch (currentMenu)
 	{
 	case MENU_MAIN:
@@ -380,6 +432,10 @@ void Up(void)
 
 void Down(void)
 {
+	if (isOptionSelected)
+	{
+		return;
+	}
 	switch (currentMenu)
 	{
 		case MENU_MAIN:
@@ -431,8 +487,11 @@ void CheckButtons(void)
 				{
 					LCD1602_PrintNum(enteredPassword[passwordIndex-1]);
 				}
+				else
+				{
+						LCD1602_Print("*");
+				}
 				
-				LCD1602_Print("*");
 			}
 
 			if (passwordIndex >= 4) // If 4 digits entered
@@ -544,6 +603,8 @@ int main (void)
 	LCD1602_Init();	
 	LCD1602_Backlight(TRUE); 
 
+	HC_SR04_Init();
+	distance = HC_SR04_GetDistance(); // Initial distance measurement
 
 	AccSens=0;	// Wybór czułości: 0 - 2g; 1 - 4g; 2 - 8g
 	I2C_WriteReg(0x1d, 0x2a, 0x0);
@@ -553,9 +614,11 @@ int main (void)
 	Speaker_Init();	// Inicjalizacja głośnika
 
 	StopAlarm();
-	
 
-	ArmAlarm();	
+
+	ArmAlarm();
+
+	SysTick_Config(SystemCoreClock/10);
 
 
 	while(1)		
@@ -563,9 +626,13 @@ int main (void)
 		if(currentState == 0)
 		{
 			CheckAccel();
-			CheckDistance();
+			if (timerCall)
+			{
+				CheckDistance();
+				timerCall = 0;
+			}
+			
 		}
-
 
 		if(timerCall && currentState == 1)
 		{

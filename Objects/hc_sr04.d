@@ -1,4 +1,4 @@
-./objects/klaw.o: klaw.c klaw.h \
+./objects/hc_sr04.o: hc_sr04.c hc_sr04.h \
   C:\Users\48795\AppData\Local\Arm\Packs\Keil\Kinetis_KLxx_DFP\1.15.1\Device\Include\MKL05Z4.h \
   C:\Users\48795\AppData\Local\Arm\Packs\ARM\CMSIS\6.1.0\CMSIS\Core\Include\core_cm0plus.h \
   C:\Keil_v5\ARM\ARMCLANG\Bin\..\include\stdint.h \

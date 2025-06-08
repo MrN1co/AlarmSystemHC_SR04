@@ -49,6 +49,7 @@ void LCD1602_Blink_Off(void);
 void LCD1602_Blink_Off_Cursor_On(void);
 void LCD1602_PL_CH(void);
 void LCD1602_PrintPL(char *str);
+void LCD1602_PrintNum(int number);
 uint8_t LCD1602_BF_AC(uint8_t *ptr);
 
 #endif  /* LCD1602_H */

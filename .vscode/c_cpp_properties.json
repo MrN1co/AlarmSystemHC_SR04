@@ -3,9 +3,9 @@
         {
             "name": "FRDM-KL05ZJ",
             "includePath": [
-                "e:\\uVision",
-                "c:\\Users\\mikis\\AppData\\Local\\Arm\\Packs\\Keil\\Kinetis_KLxx_DFP\\1.15.1\\Device\\Include",
-                "c:\\Users\\mikis\\AppData\\Local\\Arm\\Packs\\ARM\\CMSIS\\6.1.0\\CMSIS\\Core\\Include",
+                "c:\\BF\\KL05Z\\AlarmSystemHC_SR04",
+                "c:\\Users\\48795\\AppData\\Local\\Arm\\Packs\\Keil\\Kinetis_KLxx_DFP\\1.15.1\\Device\\Include",
+                "c:\\Users\\48795\\AppData\\Local\\Arm\\Packs\\ARM\\CMSIS\\6.1.0\\CMSIS\\Core\\Include",
                 "c:\\Keil_v5\\ARM\\ARMCLANG\\include"
             ],
             "defines": [

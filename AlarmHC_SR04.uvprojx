@@ -464,6 +464,16 @@
           </Files>
         </Group>
         <Group>
+          <GroupName>HC_SR04</GroupName>
+          <Files>
+            <File>
+              <FileName>hc_sr04.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\hc_sr04.c</FilePath>
+            </File>
+          </Files>
+        </Group>
+        <Group>
           <GroupName>::CMSIS</GroupName>
         </Group>
         <Group>
